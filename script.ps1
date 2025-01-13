@@ -475,7 +475,8 @@ function Get-Flow {
     if ($MismatchedFiles.Count -gt 0) {
         Write-Host " - Baixando arquivos de mods..." -ForegroundColor Yellow
         foreach ($file in $MismatchedFiles) {
-            $ModUrl = "$PublicBucketBaseUrl/$file"
+            $parsedFileName = $file.Replace(" ", "+")
+            $ModUrl = "$PublicBucketBaseUrl/$parsedFileName"
             $ModPath = "$AppDataPath\$file"
             try {
                 Write-Host "Downloading mod '$ModUrl'..." -ForegroundColor Yellow
