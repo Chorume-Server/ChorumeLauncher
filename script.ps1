@@ -477,7 +477,7 @@ function Get-Flow {
         foreach ($file in $MismatchedFiles) {
             $parsedFileName = $file.Replace(" ", "+")
             $ModUrl = "$PublicBucketBaseUrl/$parsedFileName"
-            $ModPath = "$AppDataPath\$file"
+            $ModPath = "$AppDataPath\$parsedFileName"
             try {
                 Write-Host "Downloading mod '$ModUrl'..." -ForegroundColor Yellow
                 Get-FileWithProgress -Url $ModUrl -OutFile $ModPath
