@@ -363,7 +363,6 @@ function Get-Flow {
 
 
     Write-Host "1) Verificando Instalacao do Minecraft..."
-    Start-Sleep -Seconds 1
     if (-Not (Test-Path -Path $AppDataPath)) {
         Install-TLauncher
     }
@@ -372,7 +371,6 @@ function Get-Flow {
     }
 
     Write-Host "2) Configurando o Launcher..."
-    Start-Sleep -Seconds 3
     if ((Test-Path -Path $TLauncherPath)) {
         if (Test-Path -Path $TLauncherPropertiesPath) {
             $Properties = Get-Content -Path $TLauncherPropertiesPath
@@ -416,17 +414,60 @@ function Get-Flow {
     }
 
     Write-Host "5) Verificando checksums..."
-    if ((Test-Path -Path $LocalChecksumFile)) {
-        Remove-Item $LocalChecksumFile
-    } 
-
-    Write-Host " - Creating local checksum file..."
-    New-Item -Path $LocalChecksumFile -ItemType File
-
-    Get-ChildItem -Path $ModsFolder -Filter *.jar | ForEach-Object {
-        $hash = Get-FileHash -Path $_.FullName -Algorithm SHA256
-        "$($hash.Hash) $($_.Name)" | Out-File -FilePath $LocalChecksumFile -Append
+    if (Test-Path $LocalChecksumFile) {
+        Remove-Item $LocalChecksumFile -Force
     }
+
+    # Criar um novo arquivo de checksum
+    New-Item -Path $LocalChecksumFile -ItemType File -Force
+    Write-Host "Arquivo de checksum criado."
+    $Properties = Get-Content -Path $LocalChecksumFile
+    $UpdatedProperties = $Properties
+
+    
+
+    # Get all .jar files in the ModsFolder
+    $jarFiles = Get-ChildItem -Path $ModsFolder -Filter *.jar
+    $UpdatedProperties = ""
+
+    # Process each file using a for loop
+    for ($i = 0; $i -lt $jarFiles.Count; $i++) {
+        $file = $jarFiles[$i]
+        $filePath = $file.FullName
+        $relativePath = $filePath.Substring($ModsFolder.Length).TrimStart("\")
+        Write-Host "Processing file: '$relativePath'"
+
+        try {
+            # Calculate the MD5 hash
+            $hash = (Get-FileHash -Path $filePath -Algorithm MD5).Hash
+            Write-Host "Hash calculated: $hash"
+
+            $lowerCaseHash = $hash.ToLower()
+
+            # Check if it's the last file
+            if ($i -eq $jarFiles.Count - 1) {
+                # Last item: do not append a newline
+                $UpdatedProperties += "$lowerCaseHash mods/$($file.Name)"
+            }
+            else {
+                # Append with a newline
+                $UpdatedProperties += "$lowerCaseHash mods/$($file.Name)`n"
+            }
+        }
+        catch {
+            Write-Host "Error processing file: $relativePath"
+            Write-Host "Error details: $_"
+        }
+    }
+
+    # Write the final content to the checksum file
+    if($UpdatedProperties -ne ""){
+        Set-Content -Path $LocalChecksumFile -Value $UpdatedProperties
+    }
+    else{
+        Write-Host "Nenhum arquivo de mod encontrado." -ForegroundColor Yellow
+    }
+    Write-Host "Processamento concluído."
     
     $ServerChecksumPath = Get-ServerChecksum
     $MismatchedFiles = Compare-Checksums -LocalChecksum $LocalChecksumFile -ServerChecksum $ServerChecksumPath
@@ -447,10 +488,11 @@ function Get-Flow {
         Write-Host "Arquivos de mods baixados com sucesso." -ForegroundColor Green
     }
 
-    Remove-Item $LocalChecksumFile
+
 
     Start-Process -FilePath "$AppDataPath\TLauncher.exe"
 }
 
 Get-Flow
+
 
