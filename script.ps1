@@ -233,6 +233,31 @@ function Install-JavaIfNeeded {
     }
 }
 
+function Get-Forge {
+    $ForgeVersion = "1.20.1-47.3.22"
+    $ForgePath = "$AppDataPath\versions\ForgeOptiFine\ForgeOptiFine-$ForgeVersion.jar"
+    if (-Not (Test-Path -Path $ForgePath)) {
+        Write-Host "Forge $ForgeVersion not found. Downloading..." -ForegroundColor Yellow
+        $ForgeInstallerPath = "$env:TEMP\forge-$ForgeVersion-installer.jar"
+        $ForgeInstallerUrl = "https://chorumeserver.s3.sa-east-1.amazonaws.com/forge-$ForgeVersion-installer.jar"
+        try {
+            Get-FileWithProgress -Url $ForgeInstallerUrl -OutFile $ForgeInstallerPath
+            Write-Host "Opening $ForgeInstallerPath..." -ForegroundColor Green
+            Write-Host "Installing Forge $ForgeVersion..." -ForegroundColor Yellow
+            Start-Process -FilePath "java" -ArgumentList "-jar", $ForgeInstallerPath -Wait
+            Write-Host "Forge $ForgeVersion installed." -ForegroundColor Green
+        }
+        catch {
+            Write-Host "Failed to download Forge installer. Error: $_" -ForegroundColor Red
+            <# exit 1 #>
+        }
+        
+    }
+    else {
+        Write-Host "Forge $ForgeVersion found." -ForegroundColor Green
+    }
+}
+
 function Install-TLauncher {
     Write-Host " - Pasta .minecraft nao encontrada. Baixando o TLauncher."
     $TLauncherInstallerPath = "$env:TEMP\TLauncher-Installer-1.6.0.exe"
