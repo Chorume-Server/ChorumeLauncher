@@ -355,7 +355,7 @@ function Get-Flow {
         if (Test-Path -Path $TLauncherPropertiesPath) {
             $Properties = Get-Content -Path $TLauncherPropertiesPath
             $UpdatedProperties = $Properties -replace 'login.version.game=.*', ''
-            $UpdatedProperties += "login.version.game=ForgeOptiFine 1.20.1"
+            $UpdatedProperties += "login.version.game=Fabric 1.20.1"
             Set-Content -Path $TLauncherPropertiesPath -Value $UpdatedProperties
             Write-Host " - Versao do Forge corrigida" -ForegroundColor Green
         }
