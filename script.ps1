@@ -3,27 +3,12 @@ $OutputEncoding = [System.Text.Encoding]::UTF8
 $AppDataPath = "$env:APPDATA\.minecraft"
 $TLauncherPath = "$env:APPDATA\.tlauncher"
 $TLauncherPropertiesPath = "$TLauncherPath\tlauncher-2.0.properties"
-$ForgeFolder = "$AppDataPath\versions\1.20.1-forge-47.3.22"
 $ModsFolder = "$AppDataPath\mods"
 $LocalChecksumFile = "$ModsFolder\checksum.txt"
 $BucketAddress = "https://chorumeserver.s3.sa-east-1.amazonaws.com"
 $ServerChecksumUrl = "$BucketAddress/checksum.txt"  # Replace with your actual URL
 $PublicBucketBaseUrl = "$BucketAddress"   # Base URL for mods
 $global:HasInstalledTLauncher = $false
-
-function Check-FileExists {
-    param (
-        [string]$FilePath
-    )
-
-    # Check if the file exists
-    if (Test-Path $FilePath) {
-        return $true
-    }
-    else {
-        return $false
-    }
-}
 
 # Function to download the server checksum file
 Function Get-ServerChecksum {
@@ -136,7 +121,7 @@ function Get-FileWithProgress {
     $downloadedBytes = $count
 
     # Print the initial status or any previous messages
-    Write-Host "Downloading file '$($Url.split('/') | Select -Last 1)'"
+    Write-Host "Baixando '$($Url.split('/') | Select-Object -Last 1)'"
 
     # Loop until the file is fully downloaded
     while ($count -gt 0) {
@@ -145,18 +130,15 @@ function Get-FileWithProgress {
         $downloadedBytes = $downloadedBytes + $count
 
         # Calculate the progress
-        $progress = "Downloaded ($([System.Math]::Floor($downloadedBytes / 1024))K of $($totalLength)K): "
+        $progress = "Progresso: ($([System.Math]::Floor($downloadedBytes / 1024))K of $($totalLength)K): "
         $percentComplete = [math]::round(($downloadedBytes / $response.ContentLength) * 100)
 
         # Move the cursor to the beginning of the line
-        Write-Host -NoNewline "$progress $percentComplete% complete"
+        Write-Host -NoNewline "$progress $percentComplete% completo`n"
 
         # Use carriage return to overwrite the previous line
         Write-Host -NoNewline "`r"
     }
-
-    # Print a completion message after the download is finished
-    Write-Host "`rDownload complete!"
 
     # Show the cursor again after download is complete
     [System.Console]::CursorVisible = $true
@@ -218,16 +200,11 @@ function Stop-ProcessByName {
     }
 }
 
-
-# SERVICES
-function Get-MinecraftInstallation {
-
-}
 function Install-JavaIfNeeded {
     # Check if Java is installed
     try {
         $javaVersion = & java -version | Out-Null
-        Write-Host "Java esta instalado! Versao $javaVersion" -ForegroundColor Green
+        Write-Host "Java esta instalado!" -ForegroundColor Green
         return
     }
     catch {
@@ -253,31 +230,6 @@ function Install-JavaIfNeeded {
     }
     catch {
         Write-Host "Instalacao do Java falhou. Erro: $_" -ForegroundColor Red
-    }
-}
-
-function Get-Forge {
-    $ForgeVersion = "1.20.1-47.3.22"
-    $ForgePath = "$AppDataPath\versions\ForgeOptiFine\ForgeOptiFine-$ForgeVersion.jar"
-    if (-Not (Test-Path -Path $ForgePath)) {
-        Write-Host "Forge $ForgeVersion not found. Downloading..." -ForegroundColor Yellow
-        $ForgeInstallerPath = "$env:TEMP\forge-$ForgeVersion-installer.jar"
-        $ForgeInstallerUrl = "https://chorumeserver.s3.sa-east-1.amazonaws.com/forge-$ForgeVersion-installer.jar"
-        try {
-            Get-FileWithProgress -Url $ForgeInstallerUrl -OutFile $ForgeInstallerPath
-            Write-Host "Opening $ForgeInstallerPath..." -ForegroundColor Green
-            Write-Host "Installing Forge $ForgeVersion..." -ForegroundColor Yellow
-            Start-Process -FilePath "java" -ArgumentList "-jar", $ForgeInstallerPath -Wait
-            Write-Host "Forge $ForgeVersion installed." -ForegroundColor Green
-        }
-        catch {
-            Write-Host "Failed to download Forge installer. Error: $_" -ForegroundColor Red
-            <# exit 1 #>
-        }
-        
-    }
-    else {
-        Write-Host "Forge $ForgeVersion found." -ForegroundColor Green
     }
 }
 
@@ -358,19 +310,22 @@ function Get-Flow {
     Show-RainbowAscii
     Write-Host "-----------------------------------------------------------------`n`n`n" -ForegroundColor Green
 
-    Write-Host "0) Verificando instalacao do Java.."
+    Write-Host "1) Verificando instalacao do Java.."
+    Start-Sleep 1
     Install-JavaIfNeeded
 
 
-    Write-Host "1) Verificando Instalacao do Minecraft..."
-    if (-Not (Test-Path -Path $AppDataPath)) {
+    Write-Host "2) Verificando Instalacao do TLauncher..."
+    Start-Sleep 1
+    if (-Not (Test-Path -Path $TLauncherPath)) {
         Install-TLauncher
     }
     else {
         Write-Host " - Minecraft encontrado." -ForegroundColor Green
     }
 
-    Write-Host "2) Configurando o Launcher..."
+    Write-Host "3) Configurando o TLauncher..."
+    Start-Sleep 1
     if ((Test-Path -Path $TLauncherPath)) {
         if (Test-Path -Path $TLauncherPropertiesPath) {
             $Properties = Get-Content -Path $TLauncherPropertiesPath
@@ -381,30 +336,13 @@ function Get-Flow {
         }
         else {
             Write-Host " - tlauncher-2.0.properties file not found." -ForegroundColor Red
-            <# exit 1 #>
         }
-        Write-Host " - TLauncher encontrado. Iniciando o Minecraft pelo TLauncher..." -ForegroundColor Green
+        Write-Host " - TLauncher inicializado. Iniciando o Minecraft pelo TLauncher..." -ForegroundColor Green
         
-        <# exit 1 #>
-    }
-    else {
-        Write-Host " - Utilizando o Launcher Original" -ForegroundColor Green
-        Get-Forge
-        <# exit 1 #>
     }
 
-    Write-Host "3) Verificando Forge..."
-    if (-Not (Test-Path -Path $ForgeFolder)) {
-        Write-Host "Forge nao encontrado." -ForegroundColor Red
-        Get-Forge
-        Write-Host "Forge instalado com sucesso." -ForegroundColor Green
-        <# exit 1 #>
-    }
-    else {
-        Write-Host "Forge encontrado." -ForegroundColor Green
-    }
-
-    Write-Host "4) Verificando pasta de mods..."
+    Write-Host "3) Verificando pasta de mods..."
+    Start-Sleep 1
     if (-Not (Test-Path -Path $ModsFolder)) {
         Write-Host "Pasta de mods nao encontrada. Criando..." -ForegroundColor Yellow
         New-Item -Path $ModsFolder -ItemType Directory
@@ -479,11 +417,11 @@ function Get-Flow {
             $ModUrl = "$PublicBucketBaseUrl/$parsedFileName"
             $ModPath = "$AppDataPath\$parsedFileName"
             try {
-                Write-Host "Downloading mod '$ModUrl'..." -ForegroundColor Yellow
+                Write-Host "Baixando mod '$ModUrl'..." -ForegroundColor Yellow
                 Get-FileWithProgress -Url $ModUrl -OutFile $ModPath
             }
             catch {
-                Write-Host "Failed to download mod '$file'. Error: $_" -ForegroundColor Red
+                Write-Host "Erro ao baixar mod '$file'. Error: $_" -ForegroundColor Red
             }
         }
         Write-Host "Arquivos de mods baixados com sucesso." -ForegroundColor Green
