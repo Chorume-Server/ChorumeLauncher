@@ -184,7 +184,7 @@ function Get-TLauncherInstallation {
 }
 
 function Install-TLauncher {
-    Send-Msg -Message "Pasta .minecraft nao encontrada. Baixando o TLauncher." -Variant "Warning"
+    Send-Msg -Message "Pasta .tlauncher nao encontrada. Baixando o TLauncher." -Variant "Warning"
     $TLauncherInstallerPath = "$env:TEMP\TLauncher-Installer-1.6.0.exe"
     if (Test-Path $TLauncherInstallerPath) {
         Send-Msg -Message "TLauncher ja baixado. Executando o instalador..." -Variant "Success"
@@ -330,6 +330,49 @@ function Get-Flow {
     Start-Process -FilePath "$AppDataPath\TLauncher.exe"
 }
 
-Get-Flow
+function Clear-Installation {
+    Send-Msg "Tem certeza que deseja remover os arquivos de instalacao? (y/n)" -Variant "Warning"
+    $choice = Read-Host -Prompt "y/n"
+    if($choice -eq "y") {
+        if (Test-Path -Path $TLauncherPath) {
+            Remove-Item -Path $TLauncherPath -Recurse -Force
+        }
+        if (Test-Path -Path $ModsFolder) {
+            Remove-Item -Path $ModsFolder -Recurse -Force
+        }
+        if (Test-Path -Path $TLauncherPropertiesPath) {
+            Remove-Item -Path $TLauncherPropertiesPath -Force
+        }
+        Send-Msg -Message "Instalacao limpa." -Variant "Success"
+    } else {
+        Send-Msg -Message "Operacao cancelada." -Variant "Error"
+    }
 
+    Show-Menu
+    
+}
+
+function Show-Menu {
+    Show-RainbowAscii
+    Write-Host "-----------------------------------------------------------------`n`n`n" -ForegroundColor Green
+    Write-Host "1) Jogar"
+    Write-Host "2) Limpar Instalacao"
+    Write-Host "3) Sair" 
+    Write-Host "`n`n`n-----------------------------------------------------------------`n" -ForegroundColor Green
+    $option = Read-Host -Prompt "Escolha uma opcao"
+    switch ($option) {
+        1 {
+            Get-Flow
+        }
+        2 {
+            Clear-Installation
+        }
+        default {
+           exit 1
+        }
+    }
+}
+
+Clear-Host
+Show-Menu
 
