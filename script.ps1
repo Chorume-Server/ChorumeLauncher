@@ -105,23 +105,37 @@ function Stop-ProcessByName {
     try {
         $process = Get-Process -Name $ProcessName -ErrorAction Stop
         $process | ForEach-Object { $_.Kill() }
-        Write-Host "Process '$ProcessName' has been killed."
     }
     catch {
         Write-Host "Process '$ProcessName' not found or could not be terminated. $_" -ForegroundColor Red
     }
 }
 
+function Get-KeyInput {
+    $key = [System.Console]::ReadKey($true)  
+    return $key.Key
+}
+
 function Invoke-Error {
     param (
         [Parameter(Mandatory = $true)]
-        [string]$Message
+        [string]$Message,
+        [Parameter(Mandatory = $false)]
+        [int]$Exit = $true
     )
 
     Write-Host $Message -ForegroundColor Red
-    Read-Host -Prompt "Pressione Enter para sair"
-    exit 1
+    Write-Host "Pressione qualquer tecla para continuar ou X para sair" -ForegroundColor Red
+    Get-KeyInput
+    if ($Exit) {
+        exit 1
+    }
+    else {
+        Clear-Host
+    }
 }
+
+
 
 function Send-Msg {
     param (
@@ -159,19 +173,16 @@ function Install-Git {
     $git_latest_executable_download_url = "https://github.com/git-for-windows/git/releases/download/v2.41.0.windows.1/Git-2.41.0-64-bit.exe"
     $git_latest_executable = "$env:TEMP\Git-64-bit.exe"
 
-    try {
-        if (-Not(Test-Path $git_latest_executable)) {
-            Send-Msg -Message "Git nao instalado, fazendo download..." -Variant "Warning"
-            Get-FileWithProgress -Url $git_latest_executable_download_url -OutFile $git_latest_executable
-        }
-        Send-Msg -Message "Atualizando Git..." -Variant "Success"
-        Start-Process -FilePath $git_latest_executable -ArgumentList "/VERYSILENT", "/NORESTART" -Wait
-        Start-Sleep -Seconds 5
-        Send-Msg -Message "Git Atualizado" -Variant "Success"
+    if (-Not(Test-Path $git_latest_executable)) {
+        Send-Msg -Message "Git nao instalado, fazendo download..." -Variant "Warning"
+        Get-FileWithProgress -Url $git_latest_executable_download_url -OutFile $git_latest_executable
     }
-    catch {
-        Invoke-Error -Message "Falha ao baixar o Git. Erro: $_"
-    }
+    Send-Msg -Message "Atualizando Git..." -Variant "Success"
+    Start-Process -FilePath $git_latest_executable -ArgumentList "/VERYSILENT", "/NORESTART" -Wait
+    Start-Sleep -Seconds 5
+    Send-Msg -Message "Git Atualizado" -Variant "Success"
+
+    
 }
 
 function Get-TLauncherInstallation {
@@ -221,24 +232,19 @@ function Install-TLauncher {
 }
 
 function Update-TLauncher {
-    if (Test-Path -Path $TLauncherPropertiesPath) {
-        $Properties = Get-Content -Path $TLauncherPropertiesPath
-        $UpdatedProperties = $Properties -replace 'login.version.game=.*', ''
-        $UpdatedProperties += "login.version.game=Fabric 1.20.1"
-        Set-Content -Path $TLauncherPropertiesPath -Value $UpdatedProperties
-        Send-Msg -Message "Versao do Fabric corrigida" -Variant "Success"
-    }
-    else {
-        Send-Msg -Message "TLauncher nao inicializado corretamente. Por favor, tente reinstalar." -Variant "Error"
-        Read-Host -Prompt "Pressione Enter para sair"
-        exit 1
-    }
-    Send-Msg -Message "TLauncher configurado. Iniciando..." -Variant "Success"
+    $Properties = Get-Content -Path $TLauncherPropertiesPath
+    $UpdatedProperties = $Properties -replace 'login.version.game=.*', ''
+    $UpdatedProperties += "login.version.game=Fabric 1.20.1"
+    Set-Content -Path $TLauncherPropertiesPath -Value $UpdatedProperties
+    Send-Msg -Message "Versao do Fabric corrigida" -Variant "Success"
+    
+    Send-Msg -Message "TLauncher configurado." -Variant "Success"
 }
 
 function Get-GitRepo {
     if (Test-Path -Path "$ModsFolder\.git") {
         Send-Msg -Message "Repositorio Git encontrado na pasta de mods." -Variant "Success"
+        return $true
     }
     else {
         Send-Msg -Message "Nenhum repositorio Git encontrado na pasta de mods." -Variant "Warning"
@@ -247,16 +253,17 @@ function Get-GitRepo {
 
 function New-GitRepo {
     Send-Msg -Message "Inicializando repositorio Git na pasta de mods..." -Variant "Warning"
-    git init $ModsFolder
+    git init $ModsFolder > $null 2>&1
     Send-Msg -Message "Repositorio Git inicializado." -Variant "Success"
     Send-Msg -Message "Adicionando repositorio remoto..." -Variant "Warning"
-    & git -C $ModsFolder remote add origin $GitRemoteRepo
+    & git -C $ModsFolder remote add origin $GitRemoteRepo > $null 2>&1
     Send-Msg -Message "Repositório remoto adicionado." -Variant "Success"
 }
 
 function Update-GitRepo {
     Send-Msg -Message "Atualizando repositorio remoto..." -Variant "Warning"
-    & git -C $ModsFolder reset --hard HEAD
+    & git -C $ModsFolder fetch origin
+    & git -C $ModsFolder reset --hard origin/master 
     Send-Msg -Message "Repositorio remoto atualizado." -Variant "Success"
 }
 
@@ -290,7 +297,9 @@ function Show-RainbowAscii {
 }
 
 
-function Get-Flow {
+function Invoke-Launcher {
+    
+    
     Clear-Host
     Show-RainbowAscii
     Write-Host "-----------------------------------------------------------------`n`n`n" -ForegroundColor Green
@@ -298,42 +307,87 @@ function Get-Flow {
 
     Write-Host "1) Verificando Instalacao do TLauncher..."
     Start-Sleep 1
-    if (-Not (Get-TLauncherInstallation)) {
-        Install-TLauncher
+    try {
+        if (-Not (Get-TLauncherInstallation)) {
+            Install-TLauncher
+        }
+        else {
+            Write-Host " - TLauncher encontrado." -ForegroundColor Green
+        }
     }
-    else {
-        Write-Host " - TLauncher encontrado." -ForegroundColor Green
+    catch {
+        Invoke-Error -Message "Falha ao verificar a instalacao do TLauncher. Erro: $_"
+        return Show-Menu
     }
 
     Write-Host "2) Configurando o TLauncher..."
     Start-Sleep 1
-    Update-TLauncher
+    try {
+        if (Test-Path -Path $TLauncherPropertiesPath) {
+            Update-TLauncher
+            
+        }
+        else {
+            Invoke-Error -Message "Arquivo de propriedades do TLauncher nao encontrado. Por favor, tente reinstalar." -Exit $false
+            return Show-Menu
+        }
+    }
+    catch {
+        Invoke-Error -Message "Falha ao configurar o TLauncher. Erro: $_"
+        return Show-Menu
+    }
 
     Write-Host "3) Verificando GIT..."
     Start-Sleep 1
-    if (-Not (Get-GitInstallation)) {
-        Install-Git
+    try {
+        if (-Not (Get-GitInstallation)) {
+            Install-Git
+        }
+        else { 
+            Send-Msg -Message "Git encontrado." -Variant "Success"
+        }
     }
-
-    Write-Host "4) Verificando Repositorio Git..."
-    Start-Sleep 1
-    if (-Not (Get-GitRepo)) {
-        New-GitRepo
+    catch {
+        Invoke-Error -Message "Falha ao verificar instalacao do Git. Erro: $_"
+        return Show-Menu
     }
-
-    Write-Host "5) Atualizando Repositorio Git..."
+    
+    Write-Host "4) Verificando Pasta de Mods..."
     Start-Sleep 1
-    Update-GitRepo
+    try {
+        if (-Not (Get-GitRepo)) {
+            New-GitRepo
+        } else {
+            Send-Msg -Message "Repositorio Git encontrado." -Variant "Success"
+        }
+    }
+    catch {
+        Invoke-Error -Message "Falha ao inicializar o repositorio Git. Erro: $_"
+        return Show-Menu
+    }
+    
+
+    Write-Host "5) Atualizando Mods..."
+    Start-Sleep 1
+    try {
+        Update-GitRepo
+    }
+    catch {
+        Invoke-Error -Message "Falha ao atualizar os mods. Erro: $_"
+        return Show-Menu
+    }
 
     
 
     Start-Process -FilePath "$AppDataPath\TLauncher.exe"
+    exit 0
 }
 
 function Clear-Installation {
-    Send-Msg "Tem certeza que deseja remover os arquivos de instalacao? (y/n)" -Variant "Warning"
-    $choice = Read-Host -Prompt "y/n"
-    if($choice -eq "y") {
+    Send-Msg "Tem certeza que deseja remover os arquivos de instalacao? Isso removera todos os arquivos do TLauncher e da pasta de Mods" -Variant "Warning"
+    Send-Msg "Pressione Y para confirmar ou qualquer outra tecla para cancelar" -Variant "Warning"
+    $key = Get-KeyInput
+    if ($key -eq "Y") {
         if (Test-Path -Path $TLauncherPath) {
             Remove-Item -Path $TLauncherPath -Recurse -Force
         }
@@ -344,33 +398,48 @@ function Clear-Installation {
             Remove-Item -Path $TLauncherPropertiesPath -Force
         }
         Send-Msg -Message "Instalacao limpa." -Variant "Success"
-    } else {
+    }
+    else {
         Send-Msg -Message "Operacao cancelada." -Variant "Error"
     }
 
-    Show-Menu
     
+}
+
+function Update-Mods {
+    if(-Not (Get-TLauncherInstallation)){
+        return Send-Msg -Message "TLauncher nao encontrado. Por favor, instale o TLauncher antes de atualizar os mods." -Variant "Error"
+    }
+    if (-Not (Get-GitRepo)) {
+        New-GitRepo
+    }
+    Update-GitRepo
 }
 
 function Show-Menu {
     Show-RainbowAscii
     Write-Host "-----------------------------------------------------------------`n`n`n" -ForegroundColor Green
     Write-Host "1) Jogar"
-    Write-Host "2) Limpar Instalacao"
-    Write-Host "3) Sair" 
+    Write-Host "2) Atualizar Mods"
+    Write-Host "3) Limpar Instalacao"
+    Write-Host "X) Sair" 
     Write-Host "`n`n`n-----------------------------------------------------------------`n" -ForegroundColor Green
-    $option = Read-Host -Prompt "Escolha uma opcao"
-    switch ($option) {
-        1 {
-            Get-Flow
+    $key = Get-KeyInput  # Wait for a single key press
+    switch ($key) {
+        "D1" {
+            Invoke-Launcher
         }
-        2 {
+        "D2" {
+            Update-Mods
+        }
+        "D3" {
             Clear-Installation
         }
         default {
-           exit 1
+            exit 1
         }
     }
+    Show-Menu
 }
 
 Clear-Host
