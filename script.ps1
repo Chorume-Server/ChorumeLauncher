@@ -179,10 +179,11 @@ function Install-Git {
     }
     Send-Msg -Message "Atualizando Git..." -Variant "Success"
     Start-Process -FilePath $git_latest_executable -ArgumentList "/VERYSILENT", "/NORESTART" -Wait
-    Start-Sleep -Seconds 5
-    Send-Msg -Message "Git Atualizado" -Variant "Success"
 
     
+    Start-Sleep -Seconds 5
+    $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
+    Send-Msg -Message "Git Atualizado" -Variant "Success"
 }
 
 function Get-TLauncherInstallation {
@@ -341,7 +342,7 @@ function Invoke-Launcher {
     Start-Sleep 1
     try {
         if (-Not (Get-GitInstallation)) {
-            Install-Git
+            Install-Git 
         }
         else { 
             Send-Msg -Message "Git encontrado." -Variant "Success"
@@ -357,7 +358,8 @@ function Invoke-Launcher {
     try {
         if (-Not (Get-GitRepo)) {
             New-GitRepo
-        } else {
+        }
+        else {
             Send-Msg -Message "Repositorio Git encontrado." -Variant "Success"
         }
     }
@@ -407,7 +409,7 @@ function Clear-Installation {
 }
 
 function Update-Mods {
-    if(-Not (Get-TLauncherInstallation)){
+    if (-Not (Get-TLauncherInstallation)) {
         return Send-Msg -Message "TLauncher nao encontrado. Por favor, instale o TLauncher antes de atualizar os mods." -Variant "Error"
     }
     if (-Not (Get-GitRepo)) {
