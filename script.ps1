@@ -424,6 +424,7 @@ function Show-Menu {
     Write-Host "3) Limpar Instalacao"
     Write-Host "X) Sair" 
     Write-Host "`n`n`n-----------------------------------------------------------------`n" -ForegroundColor Green
+    Write-Host "Versao 0.0.1" -ForegroundColor DarkYellow
     $key = Get-KeyInput  # Wait for a single key press
     switch ($key) {
         "D1" {
