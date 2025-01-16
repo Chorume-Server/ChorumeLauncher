@@ -135,8 +135,6 @@ function Invoke-Error {
     }
 }
 
-
-
 function Send-Msg {
     param (
         [Parameter(Mandatory = $true)]
@@ -157,6 +155,31 @@ function Send-Msg {
             Write-Host " - $Message" -ForegroundColor Yellow
         }
     }
+}
+
+function Get-JavaInstallation {
+    try {
+        java -version > $null 2>&1
+        return $true
+    }
+    catch {
+        return $false
+    }
+}
+
+function Install-Java {
+    $java_latest_executable_download_url = "https://javadl.sun.com/webapps/download/AutoDL?BundleId=107944"
+    $java_latest_executable = "$env:TEMP\Java-64-bit.exe"
+
+    if (-Not(Test-Path $java_latest_executable)) {
+        Send-Msg -Message "Fazendo download do Java..." -Variant "Warning"
+        Get-FileWithProgress -Url $java_latest_executable_download_url -OutFile $java_latest_executable
+    }
+    Send-Msg -Message "Atualizando Java..." -Variant "Success"
+    Start-Process -FilePath $java_latest_executable -Wait
+
+    $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
+    Send-Msg -Message "Java Atualizado" -Variant "Success"
 }
 
 function Get-GitInstallation {
@@ -305,6 +328,19 @@ function Invoke-Launcher {
     Show-RainbowAscii
     Write-Host "-----------------------------------------------------------------`n`n`n" -ForegroundColor Green
 
+    Write-Host "0) Verificando Instalacao do Java..."
+    Start-Sleep 1
+    try {
+        if(-Not(Get-JavaInstallation)){
+            Install-Java
+        }
+        else {
+            Write-Host " - Java encontrado." -ForegroundColor Green
+        }
+    }
+    catch {
+        <#Do this if a terminating exception happens#>
+    }
 
     Write-Host "1) Verificando Instalacao do TLauncher..."
     Start-Sleep 1
