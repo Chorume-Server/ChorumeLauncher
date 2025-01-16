@@ -4,98 +4,10 @@ $AppDataPath = "$env:APPDATA\.minecraft"
 $TLauncherPath = "$env:APPDATA\.tlauncher"
 $TLauncherPropertiesPath = "$TLauncherPath\tlauncher-2.0.properties"
 $ModsFolder = "$AppDataPath\mods"
-$LocalChecksumFile = "$ModsFolder\checksum.txt"
-$BucketAddress = "https://chorumeserver.s3.sa-east-1.amazonaws.com"
-$ServerChecksumUrl = "$BucketAddress/checksum.txt"  # Replace with your actual URL
-$PublicBucketBaseUrl = "$BucketAddress"   # Base URL for mods
+$GitRemoteRepo = "https://github.com/chorumeserver/Mods-CHRSRV.git"
 $global:HasInstalledTLauncher = $false
 
-# Function to download the server checksum file
-Function Get-ServerChecksum {
-    Write-Host "Downloading server checksum..."
-    $ServerChecksumPath = "$ModsFolder\server_checksum.txt"
-    Invoke-WebRequest -Uri $ServerChecksumUrl -OutFile $ServerChecksumPath -ErrorAction Stop
-    Write-Host "Server checksum downloaded."
-    return $ServerChecksumPath
-}
 
-# Function to compare checksums and return mismatched files
-Function Compare-Checksums {
-    param (
-        [string]$LocalChecksum,
-        [string]$ServerChecksum
-    )
-    Write-Host "Comparing checksums..."
-    $LocalContent = Get-Content -Path $LocalChecksum -ErrorAction Stop
-    $ServerContent = Get-Content -Path $ServerChecksum -ErrorAction Stop
-
-    $LocalFiles = @{}
-    foreach ($line in $LocalContent) {
-        $parts = $line -split ' '
-        $LocalFiles[$parts[1]] = $parts[0]
-    }
-
-    $ServerFiles = @{}
-    foreach ($line in $ServerContent) {
-        $parts = $line -split ' '
-        $ServerFiles[$parts[1]] = $parts[0]
-    }
-
-    $MismatchedFiles = @()
-    foreach ($file in $ServerFiles.Keys) {
-        if ($file -notlike "*/" -and (-Not $LocalFiles.ContainsKey($file) -or $LocalFiles[$file] -ne $ServerFiles[$file])) {
-            $MismatchedFiles += $file
-        }
-    }
-
-    if ($MismatchedFiles.Count -eq 0) {
-        Write-Host "All files are up-to-date." -ForegroundColor Green
-    }
-    else {
-        Write-Host "Mismatched or missing files detected:" -ForegroundColor Yellow
-        $MismatchedFiles | ForEach-Object { Write-Host "- $_" }
-    }
-
-    return $MismatchedFiles
-}
-
-# Function to start the Minecraft launcher
-Function Start-MinecraftLauncher {
-    # Attempt to locate Minecraft.exe in the default directory
-    $MinecraftExe = "$AppDataPath\Microsoft\VisualStudio\Packages\Minecraft\MinecraftLauncher.exe"
-    if (-Not (Test-Path -Path $MinecraftExe)) {
-        # If not found, prompt user to input the Minecraft launcher path
-        $MinecraftExe = Write-Host "Minecraft executable not found. Please enter the path to MinecraftLauncher.exe"
-    }
-
-    # Check if the user-provided path exists
-    if (Test-Path -Path $MinecraftExe) {
-        Write-Host "Launching Minecraft..."
-        Start-Process -FilePath $MinecraftExe
-    }
-    else {
-        Write-Host "Invalid Minecraft executable path. Exiting." -ForegroundColor Red
-        <# exit 1 #>
-    }
-}
-
-# Function to save user directory for future use
-Function Save-UserDirectory {
-    param (
-        [string]$DirectoryPath
-    )
-    $ConfigPath = "$AppDataPath\minecraft_launcher_config.txt"
-    Set-Content -Path $ConfigPath -Value $DirectoryPath
-}
-
-# Function to load the saved user directory
-Function Start-UserDirectory {
-    $ConfigPath = "$AppDataPath\minecraft_launcher_config.txt"
-    if (Test-Path -Path $ConfigPath) {
-        return Get-Content -Path $ConfigPath
-    }
-    return $null
-}
 
 function Get-FileWithProgress {
     param (
@@ -134,7 +46,7 @@ function Get-FileWithProgress {
         $percentComplete = [math]::round(($downloadedBytes / $response.ContentLength) * 100)
 
         # Move the cursor to the beginning of the line
-        Write-Host -NoNewline "$progress $percentComplete% completo`n"
+        Write-Host -NoNewline "$progress $percentComplete% completo"
 
         # Use carriage return to overwrite the previous line
         Write-Host -NoNewline "`r"
@@ -200,102 +112,152 @@ function Stop-ProcessByName {
     }
 }
 
-function Install-JavaIfNeeded {
-    # Check if Java is installed
-    try {
-        $javaVersion = & java -version | Out-Null
-        Write-Host "Java esta instalado!" -ForegroundColor Green
-        return
-    }
-    catch {
-        Write-Host "Java nao esta instalado, baixando instalador..."
-    }
+function Invoke-Error {
+    param (
+        [Parameter(Mandatory = $true)]
+        [string]$Message
+    )
 
-    # Define the Java installer URL and path
-    $JavaInstallerPath = "$env:TEMP\jdk-23_windows-x64_bin.exe"
-    $JavaInstallerUrl = "https://download.oracle.com/java/23/latest/jdk-23_windows-x64_bin.exe"  # Update with the correct URL for your Java version
+    Write-Host $Message -ForegroundColor Red
+    Read-Host -Prompt "Pressione Enter para sair"
+    exit 1
+}
 
-    # Download the Java installer
-    Write-Host "Baixando instalador do Java $JavaVersion..."
-    Get-FileWithProgress -Url $JavaInstallerUrl -OutFile $JavaInstallerPath
+function Send-Msg {
+    param (
+        [Parameter(Mandatory = $true)]
+        [string]$Message,
+        [Parameter(Mandatory = $true)]
+        [ValidateSet("Error", "Success", "Warning")]
+        [string]$Variant
+    )
 
-    # Run the installer
-    Write-Host "Instalando Java $JavaVersion..."
-    Start-Process -FilePath $JavaInstallerPath -ArgumentList "/s" -Wait
-
-    # Verify installation
-    try {
-        $javaVersion = & java -version
-        Write-Host "Java $JavaVersion instalado com sucesso."
-    }
-    catch {
-        Write-Host "Instalacao do Java falhou. Erro: $_" -ForegroundColor Red
+    switch ($Variant) {
+        "Error" {
+            Write-Host " - $Message" -ForegroundColor Red
+        }
+        "Success" {
+            Write-Host " - $Message" -ForegroundColor Green
+        }
+        "Warning" {
+            Write-Host " - $Message" -ForegroundColor Yellow
+        }
     }
 }
 
-function Get-Forge {
-    $ForgeVersion = "1.20.1-47.3.22"
-    $ForgePath = "$AppDataPath\versions\ForgeOptiFine\ForgeOptiFine-$ForgeVersion.jar"
-    if (-Not (Test-Path -Path $ForgePath)) {
-        Write-Host "Forge $ForgeVersion not found. Downloading..." -ForegroundColor Yellow
-        $ForgeInstallerPath = "$env:TEMP\forge-$ForgeVersion-installer.jar"
-        $ForgeInstallerUrl = "https://chorumeserver.s3.sa-east-1.amazonaws.com/forge-$ForgeVersion-installer.jar"
-        try {
-            Get-FileWithProgress -Url $ForgeInstallerUrl -OutFile $ForgeInstallerPath
-            Write-Host "Opening $ForgeInstallerPath..." -ForegroundColor Green
-            Write-Host "Installing Forge $ForgeVersion..." -ForegroundColor Yellow
-            Start-Process -FilePath "java" -ArgumentList "-jar", $ForgeInstallerPath -Wait
-            Write-Host "Forge $ForgeVersion installed." -ForegroundColor Green
+function Get-GitInstallation {
+    try {
+        git --version > $null 2>&1
+        return $true
+    }
+    catch {
+        return $false
+    }
+}
+
+function Install-Git {
+    $git_latest_executable_download_url = "https://github.com/git-for-windows/git/releases/download/v2.41.0.windows.1/Git-2.41.0-64-bit.exe"
+    $git_latest_executable = "$env:TEMP\Git-64-bit.exe"
+
+    try {
+        if (-Not(Test-Path $git_latest_executable)) {
+            Send-Msg -Message "Git nao instalado, fazendo download..." -Variant "Warning"
+            Get-FileWithProgress -Url $git_latest_executable_download_url -OutFile $git_latest_executable
         }
-        catch {
-            Write-Host "Failed to download Forge installer. Error: $_" -ForegroundColor Red
-            <# exit 1 #>
-        }
-        
+        Send-Msg -Message "Atualizando Git..." -Variant "Success"
+        Start-Process -FilePath $git_latest_executable -ArgumentList "/VERYSILENT", "/NORESTART" -Wait
+        Start-Sleep -Seconds 5
+        Send-Msg -Message "Git Atualizado" -Variant "Success"
+    }
+    catch {
+        Invoke-Error -Message "Falha ao baixar o Git. Erro: $_"
+    }
+}
+
+function Get-TLauncherInstallation {
+    if (Test-Path -Path $TLauncherPath) {
+        return $true
     }
     else {
-        Write-Host "Forge $ForgeVersion found." -ForegroundColor Green
+        return $false
     }
 }
 
 function Install-TLauncher {
-    Write-Host " - Pasta .minecraft nao encontrada. Baixando o TLauncher."
+    Send-Msg -Message "Pasta .minecraft nao encontrada. Baixando o TLauncher." -Variant "Warning"
     $TLauncherInstallerPath = "$env:TEMP\TLauncher-Installer-1.6.0.exe"
     if (Test-Path $TLauncherInstallerPath) {
-        Write-Host " - TLauncher ja baixado. Executando o instalador..." -ForegroundColor Green
-        Write-Host " - VOCE SERA REDIRECIONADO A INSTALACAO. NO FIM, MARQUE A OPCAO DE INICIAR O LAUNCHER, CASO CONTRARIO NAO IRA FUNCIONAR" -ForegroundColor Red
+        Send-Msg -Message "TLauncher ja baixado. Executando o instalador..." -Variant "Success"
+        Send-Msg -Message "VOCE SERA REDIRECIONADO A INSTALACAO. NO FIM, MARQUE A OPCAO DE INICIAR O LAUNCHER, CASO CONTRARIO NAO IRA FUNCIONAR" -Variant "Error"
         Write-Host "PRESSIONE ENTER PARA CONTINUAR" -ForegroundColor Red
         Read-Host
-        Write-Host " - Aguardando instalacao do TLauncher..." -ForegroundColor Yellow
+        Send-Msg -Message "Aguardando instalacao do TLauncher..." -Variant "Warning"
         Start-Process -FilePath $TLauncherInstallerPath
         Watch-ProcessRunningAndStopping -ProcessName "TLauncher-Installer-1.6.0"
     }
     else {
         try {
             Get-FileWithProgress -Url "https://dl2.tlauncher.org/f.php?f=files%2FTLauncher-Installer-1.6.0.exe" -OutFile $TLauncherInstallerPath
-            Write-Host " - Baixado $FileSize bytes de $OutFile"
-            Write-Host " - TLauncher baixado com sucesso. Executando o instalador" -ForegroundColor Green
-            Write-Host " - VOCE SERA REDIRECIONADO A INSTALACAO. NO FIM, MARQUE A OPCAO DE INICIAR O LAUNCHER, CASO CONTRARIO NAO IRA FUNCIONAR" -ForegroundColor Red
+            Send-Msg -Message "TLauncher baixado com sucesso. Executando o instalador" -Variant "Success"
+            Send-Msg -Message "VOCE SERA REDIRECIONADO A INSTALACAO. NO FIM, MARQUE A OPCAO DE INICIAR O LAUNCHER, CASO CONTRARIO NAO IRA FUNCIONAR" -Variant "Error"
             Write-Host "PRESSIONE ENTER PARA CONTINUAR" -ForegroundColor Red
             Read-Host
             Start-Process -FilePath $TLauncherInstallerPath
             Watch-ProcessRunningAndStopping -ProcessName "TLauncher-Installer-1.6.0"
-            
         }
         catch {
-            Write-Host " - Falha ao baixar o TLauncher. Erro: $_" -ForegroundColor Red
-            <# exit 1 #>
+            Send-Msg -Message "Falha ao baixar o TLauncher. Erro: $_" -Variant "Error"
         }
     }
     $LauncherProccessName = "java"
     $UpdaterProcessName = "javaw"
-    Write-Host " - Aguardando atualizacao do TLauncher..." -ForegroundColor Yellow
+    Send-Msg -Message "Aguardando atualizacao do TLauncher..." -Variant "Warning"
     Watch-ProcessRunningAndStopping -ProcessName $UpdaterProcessName
-    Write-Host " - Aguardando inicializacao do TLauncher..." -ForegroundColor Yellow
+    Send-Msg -Message "Aguardando inicializacao do TLauncher..." -Variant "Warning"
     while ((Get-ProcessRunning -ProcessName $UpdaterProcessName) -and (Get-ProcessRunning -ProcessName $LauncherProccessName)) {
         Start-Sleep -Seconds 2
     }
     Stop-ProcessByName -ProcessName $LauncherProccessName
+}
+
+function Update-TLauncher {
+    if (Test-Path -Path $TLauncherPropertiesPath) {
+        $Properties = Get-Content -Path $TLauncherPropertiesPath
+        $UpdatedProperties = $Properties -replace 'login.version.game=.*', ''
+        $UpdatedProperties += "login.version.game=Fabric 1.20.1"
+        Set-Content -Path $TLauncherPropertiesPath -Value $UpdatedProperties
+        Send-Msg -Message "Versao do Fabric corrigida" -Variant "Success"
+    }
+    else {
+        Send-Msg -Message "TLauncher nao inicializado corretamente. Por favor, tente reinstalar." -Variant "Error"
+        Read-Host -Prompt "Pressione Enter para sair"
+        exit 1
+    }
+    Send-Msg -Message "TLauncher configurado. Iniciando..." -Variant "Success"
+}
+
+function Get-GitRepo {
+    if (Test-Path -Path "$ModsFolder\.git") {
+        Send-Msg -Message "Repositorio Git encontrado na pasta de mods." -Variant "Success"
+    }
+    else {
+        Send-Msg -Message "Nenhum repositorio Git encontrado na pasta de mods." -Variant "Warning"
+    }
+}
+
+function New-GitRepo {
+    Send-Msg -Message "Inicializando repositorio Git na pasta de mods..." -Variant "Warning"
+    git init $ModsFolder
+    Send-Msg -Message "Repositorio Git inicializado." -Variant "Success"
+    Send-Msg -Message "Adicionando repositorio remoto..." -Variant "Warning"
+    & git -C $ModsFolder remote add origin $GitRemoteRepo
+    Send-Msg -Message "Repositório remoto adicionado." -Variant "Success"
+}
+
+function Update-GitRepo {
+    Send-Msg -Message "Atualizando repositorio remoto..." -Variant "Warning"
+    & git -C $ModsFolder reset --hard HEAD
+    Send-Msg -Message "Repositorio remoto atualizado." -Variant "Success"
 }
 
 function Show-RainbowAscii {
@@ -327,132 +289,43 @@ function Show-RainbowAscii {
     }
 }
 
-# Display the rainbow-colored ASCII art
-
 
 function Get-Flow {
     Clear-Host
     Show-RainbowAscii
     Write-Host "-----------------------------------------------------------------`n`n`n" -ForegroundColor Green
 
-    Write-Host "1) Verificando instalacao do Java.."
-    Start-Sleep 1
-    Install-JavaIfNeeded
 
-
-    Write-Host "2) Verificando Instalacao do TLauncher..."
+    Write-Host "1) Verificando Instalacao do TLauncher..."
     Start-Sleep 1
-    if (-Not (Test-Path -Path $TLauncherPath)) {
+    if (-Not (Get-TLauncherInstallation)) {
         Install-TLauncher
     }
     else {
-        Write-Host " - Minecraft encontrado." -ForegroundColor Green
+        Write-Host " - TLauncher encontrado." -ForegroundColor Green
     }
 
-    Write-Host "3) Configurando o TLauncher..."
+    Write-Host "2) Configurando o TLauncher..."
     Start-Sleep 1
-    if ((Test-Path -Path $TLauncherPath)) {
-        if (Test-Path -Path $TLauncherPropertiesPath) {
-            $Properties = Get-Content -Path $TLauncherPropertiesPath
-            $UpdatedProperties = $Properties -replace 'login.version.game=.*', ''
-            $UpdatedProperties += "login.version.game=Fabric 1.20.1"
-            Set-Content -Path $TLauncherPropertiesPath -Value $UpdatedProperties
-            Write-Host " - Versao do Forge corrigida" -ForegroundColor Green
-        }
-        else {
-            Write-Host " - tlauncher-2.0.properties file not found." -ForegroundColor Red
-        }
-        Write-Host " - TLauncher inicializado. Iniciando o Minecraft pelo TLauncher..." -ForegroundColor Green
-        
-    }
+    Update-TLauncher
 
-    Write-Host "3) Verificando pasta de mods..."
+    Write-Host "3) Verificando GIT..."
     Start-Sleep 1
-    if (-Not (Test-Path -Path $ModsFolder)) {
-        Write-Host "Pasta de mods nao encontrada. Criando..." -ForegroundColor Yellow
-        New-Item -Path $ModsFolder -ItemType Directory
-    }
-    else {
-        Write-Host "Pasta de mods encontrada." -ForegroundColor Green
+    if (-Not (Get-GitInstallation)) {
+        Install-Git
     }
 
-    Write-Host "5) Verificando checksums..."
-    if (Test-Path $LocalChecksumFile) {
-        Remove-Item $LocalChecksumFile -Force
+    Write-Host "4) Verificando Repositorio Git..."
+    Start-Sleep 1
+    if (-Not (Get-GitRepo)) {
+        New-GitRepo
     }
 
-    # Criar um novo arquivo de checksum
-    New-Item -Path $LocalChecksumFile -ItemType File -Force
-    Write-Host "Arquivo de checksum criado."
-    $Properties = Get-Content -Path $LocalChecksumFile
-    $UpdatedProperties = $Properties
+    Write-Host "5) Atualizando Repositorio Git..."
+    Start-Sleep 1
+    Update-GitRepo
 
     
-
-    # Get all .jar files in the ModsFolder
-    $jarFiles = Get-ChildItem -Path $ModsFolder -Filter *.jar
-    $UpdatedProperties = ""
-
-    # Process each file using a for loop
-    for ($i = 0; $i -lt $jarFiles.Count; $i++) {
-        $file = $jarFiles[$i]
-        $filePath = $file.FullName
-        $relativePath = $filePath.Substring($ModsFolder.Length).TrimStart("\")
-        Write-Host "Processing file: '$relativePath'"
-
-        try {
-            # Calculate the MD5 hash
-            $hash = (Get-FileHash -Path $filePath -Algorithm MD5).Hash
-            Write-Host "Hash calculated: $hash"
-
-            $lowerCaseHash = $hash.ToLower()
-
-            # Check if it's the last file
-            if ($i -eq $jarFiles.Count - 1) {
-                # Last item: do not append a newline
-                $UpdatedProperties += "$lowerCaseHash mods/$($file.Name)"
-            }
-            else {
-                # Append with a newline
-                $UpdatedProperties += "$lowerCaseHash mods/$($file.Name)`n"
-            }
-        }
-        catch {
-            Write-Host "Error processing file: $relativePath"
-            Write-Host "Error details: $_"
-        }
-    }
-
-    # Write the final content to the checksum file
-    if($UpdatedProperties -ne ""){
-        Set-Content -Path $LocalChecksumFile -Value $UpdatedProperties
-    }
-    else{
-        Write-Host "Nenhum arquivo de mod encontrado." -ForegroundColor Yellow
-    }
-    Write-Host "Processamento concluído."
-    
-    $ServerChecksumPath = Get-ServerChecksum
-    $MismatchedFiles = Compare-Checksums -LocalChecksum $LocalChecksumFile -ServerChecksum $ServerChecksumPath
-
-    if ($MismatchedFiles.Count -gt 0) {
-        Write-Host " - Baixando arquivos de mods..." -ForegroundColor Yellow
-        foreach ($file in $MismatchedFiles) {
-            $parsedFileName = $file.Replace(" ", "+")
-            $ModUrl = "$PublicBucketBaseUrl/$parsedFileName"
-            $ModPath = "$AppDataPath\$parsedFileName"
-            try {
-                Write-Host "Baixando mod '$ModUrl'..." -ForegroundColor Yellow
-                Get-FileWithProgress -Url $ModUrl -OutFile $ModPath
-            }
-            catch {
-                Write-Host "Erro ao baixar mod '$file'. Error: $_" -ForegroundColor Red
-            }
-        }
-        Write-Host "Arquivos de mods baixados com sucesso." -ForegroundColor Green
-    }
-
-
 
     Start-Process -FilePath "$AppDataPath\TLauncher.exe"
 }
