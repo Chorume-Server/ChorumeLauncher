@@ -409,6 +409,12 @@ function Clear-Installation {
 }
 
 function Update-Mods {
+    if (-Not (Get-GitInstallation)) {
+        Install-Git 
+    }
+    else { 
+        Send-Msg -Message "Git encontrado." -Variant "Success"
+    }
     if (-Not (Get-TLauncherInstallation)) {
         return Send-Msg -Message "TLauncher nao encontrado. Por favor, instale o TLauncher antes de atualizar os mods." -Variant "Error"
     }
